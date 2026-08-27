@@ -1,0 +1,7 @@
+# Local OSRM graph + downloaded map data (generated on the /data volume)
+*.osrm
+*.osrm.*
+*.osm.pbf
+
+# Local Docker volume marker
+.data/
