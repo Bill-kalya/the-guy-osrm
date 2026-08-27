@@ -1,54 +1,54 @@
 #!/bin/sh
 #
-# The Guy - Kenya OSRM preprocessing (MLD pipeline).
+# The Guy - Kenya OSRM graph provisioning.
 #
-# Downloads the Kenya OpenStreetMap extract from Geofabrik (if not already
-# present) and builds an MLD routing graph. This is memory/disk intensive and
-# should only run once; the resulting graph persists on the /data volume.
+# Downloads a PREBUILT MLD routing graph (a gzipped tarball of the kenya.osrm.*
+# files) and unpacks it onto the /data volume. This avoids the expensive,
+# memory-hungry extract/partition/customize step in production and, critically,
+# avoids depending on Geofabrik's download server (which Railway's egress
+# cannot always reach).
+#
+# The tarball is produced once by a maintenance job (see
+# preprocess-from-pbf.sh) and hosted on a GitHub Release (or S3/R2/B2), then
+# pointed at via GRAPH_URL.
 
 set -eu
 
 DATA_DIR="/data"
-PBF_FILE="${DATA_DIR}/kenya.osm.pbf"
+GRAPH_TARBALL="${DATA_DIR}/kenya-osrm-graph.tar.gz"
 OSRM_FILE="${DATA_DIR}/kenya.osrm"
-OSRM_PROFILE="${OSRM_PROFILE:-/opt/car.lua}"
 
-# Geofabrik Kenya extract. Use the dated snapshot filename if you want a
-# specific release; kenya-latest.osm.pbf always points at the newest one.
-PBF_URL="${PBF_URL:-https://download.geofabrik.de/africa/kenya-latest.osm.pbf}"
+# URL of the prebuilt graph tarball. REQUIRED in production.
+GRAPH_URL="${GRAPH_URL:-}"
 
 mkdir -p "${DATA_DIR}"
 
-if [ ! -f "${PBF_FILE}" ]; then
-    echo "[prepare] Downloading Kenya OSM data from ${PBF_URL} ..."
-    # Follow redirects (Geofabrik redirects kenya-latest to a dated file) and
-    # resume partial downloads across retries.
-    curl -fL --retry 3 --retry-delay 5 -C - \
-        -o "${PBF_FILE}" "${PBF_URL}"
-else
-    echo "[prepare] Using existing PBF: ${PBF_FILE}"
+if [ -z "${GRAPH_URL}" ]; then
+    echo "[prepare] FATAL: GRAPH_URL is not set. "
+    echo "[prepare] Point it at the hosted kenya-osrm-graph.tar.gz (GitHub Release / R2 / B2)."
+    exit 1
 fi
 
-echo "========================================"
-echo "STEP 1/3: OSRM EXTRACT"
-echo "========================================"
-osrm-extract -p "${OSRM_PROFILE}" "${PBF_FILE}"
+echo "[prepare] Downloading prebuilt Kenya OSRM graph from ${GRAPH_URL} ..."
+# -f  fail on HTTP errors
+# -L  follow redirects (GitHub Release assets redirect to a CDN)
+# --retry / --retry-delay  resilient to transient failures
+# -C -  resume a partial download across retries
+curl -fL --retry 5 --retry-delay 5 -C - \
+    -o "${GRAPH_TARBALL}" "${GRAPH_URL}"
 
-echo "========================================"
-echo "STEP 2/3: OSRM PARTITION"
-echo "========================================"
-osrm-partition "${OSRM_FILE}"
+echo "[prepare] Unpacking graph tarball ..."
+tar xzf "${GRAPH_TARBALL}" -C "${DATA_DIR}"
 
-echo "========================================"
-echo "STEP 3/3: OSRM CUSTOMIZE"
-echo "========================================"
-osrm-customize "${OSRM_FILE}"
+# Reject a bad download (e.g. HTML error page saved as the tarball) before we
+# tell the server it's ready.
+if [ ! -f "${OSRM_FILE}.properties" ]; then
+    echo "[prepare] FATAL: tarball did not contain a valid OSRM graph (no kenya.osrm.properties)."
+    rm -f "${GRAPH_TARBALL}"
+    exit 1
+fi
 
-echo "========================================"
-echo "OSRM PREPROCESSING COMPLETE"
-echo "========================================"
-
-# Remove the source PBF to free disk on the volume.
-rm -f "${PBF_FILE}"
+echo "[prepare] Removing tarball to free volume space ..."
+rm -f "${GRAPH_TARBALL}"
 
 echo "[prepare] Kenya routing graph ready."

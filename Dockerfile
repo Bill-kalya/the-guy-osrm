@@ -21,9 +21,10 @@ WORKDIR /data
 # Entrypoint/preparation scripts (they live under /opt in the image).
 COPY start.sh /opt/start.sh
 COPY prepare.sh /opt/prepare.sh
+COPY preprocess-from-pbf.sh /opt/preprocess-from-pbf.sh
 COPY healthcheck.sh /opt/healthcheck.sh
 
-RUN chmod +x /opt/start.sh /opt/prepare.sh /opt/healthcheck.sh
+RUN chmod +x /opt/start.sh /opt/prepare.sh /opt/preprocess-from-pbf.sh /opt/healthcheck.sh
 
 EXPOSE 5000
 
