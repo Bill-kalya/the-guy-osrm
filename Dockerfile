@@ -9,6 +9,13 @@
 
 FROM ghcr.io/project-osrm/osrm-backend:v5.27.1
 
+# curl (for prepare.sh to download the Kenya PBF) and ca-certificates (so curl
+# can verify the HTTPS connection to Geofabrik) are not present in the base
+# image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /data
 
 # Entrypoint/preparation scripts (they live under /opt in the image).

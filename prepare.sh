@@ -21,7 +21,10 @@ mkdir -p "${DATA_DIR}"
 
 if [ ! -f "${PBF_FILE}" ]; then
     echo "[prepare] Downloading Kenya OSM data from ${PBF_URL} ..."
-    wget --progress=dot:giga -O "${PBF_FILE}" "${PBF_URL}"
+    # Follow redirects (Geofabrik redirects kenya-latest to a dated file) and
+    # resume partial downloads across retries.
+    curl -fL --retry 3 --retry-delay 5 -C - \
+        -o "${PBF_FILE}" "${PBF_URL}"
 else
     echo "[prepare] Using existing PBF: ${PBF_FILE}"
 fi
