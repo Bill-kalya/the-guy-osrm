@@ -21,6 +21,14 @@ OSRM_FILE="${DATA_DIR}/kenya.osrm"
 # URL of the prebuilt graph tarball. REQUIRED in production.
 GRAPH_URL="${GRAPH_URL:-}"
 
+# If the value was pasted as a full "GRAPH_URL=https://..." line (or any KEY=URL
+# form) instead of just the URL, strip the "KEY=" prefix so curl gets a clean
+# URL. This makes the container tolerant of how the env var is configured.
+case "${GRAPH_URL}" in
+    http*) : ;;
+    *=*)   GRAPH_URL="${GRAPH_URL#*=}" ;;
+esac
+
 mkdir -p "${DATA_DIR}"
 
 if [ -z "${GRAPH_URL}" ]; then
