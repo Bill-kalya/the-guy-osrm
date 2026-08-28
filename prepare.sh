@@ -15,8 +15,16 @@
 set -eu
 
 DATA_DIR="/data"
-GRAPH_TARBALL="${DATA_DIR}/kenya-osrm-graph.tar.gz"
 OSRM_FILE="${DATA_DIR}/kenya.osrm"
+
+# Download the tarball to a scratch location so the 466MB archive is NOT
+# written next to the ~1.1GB unpacked graph on the /data volume at the same
+# time. /tmp is in-memory (tmpfs) on most container platforms, which both keeps
+# peak volume usage down to just the unpacked graph and avoids the
+# "curl: (23) Failure writing output to destination" seen when the volume runs
+# out of space mid-download. We do NOT use `-C -` (resume) here precisely
+# because resuming into a stale partial file wedged the volume before.
+GRAPH_TARBALL="/tmp/kenya-osrm-graph.tar.gz"
 
 # URL of the prebuilt graph tarball. REQUIRED in production.
 GRAPH_URL="${GRAPH_URL:-}"
@@ -30,6 +38,7 @@ case "${GRAPH_URL}" in
 esac
 
 mkdir -p "${DATA_DIR}"
+rm -f "${GRAPH_TARBALL}"
 
 if [ -z "${GRAPH_URL}" ]; then
     echo "[prepare] FATAL: GRAPH_URL is not set. "
@@ -41,22 +50,17 @@ echo "[prepare] Downloading prebuilt Kenya OSRM graph from ${GRAPH_URL} ..."
 # -f  fail on HTTP errors
 # -L  follow redirects (GitHub Release assets redirect to a CDN)
 # --retry / --retry-delay  resilient to transient failures
-# -C -  resume a partial download across retries
-curl -fL --retry 5 --retry-delay 5 -C - \
-    -o "${GRAPH_TARBALL}" "${GRAPH_URL}"
+curl -fL --retry 3 --retry-delay 3 -o "${GRAPH_TARBALL}" "${GRAPH_URL}"
 
 echo "[prepare] Unpacking graph tarball ..."
 tar xzf "${GRAPH_TARBALL}" -C "${DATA_DIR}"
+rm -f "${GRAPH_TARBALL}"
 
 # Reject a bad download (e.g. HTML error page saved as the tarball) before we
 # tell the server it's ready.
 if [ ! -f "${OSRM_FILE}.properties" ]; then
     echo "[prepare] FATAL: tarball did not contain a valid OSRM graph (no kenya.osrm.properties)."
-    rm -f "${GRAPH_TARBALL}"
     exit 1
 fi
-
-echo "[prepare] Removing tarball to free volume space ..."
-rm -f "${GRAPH_TARBALL}"
 
 echo "[prepare] Kenya routing graph ready."
