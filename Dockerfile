@@ -9,12 +9,21 @@
 
 FROM ghcr.io/project-osrm/osrm-backend:v5.27.1
 
-# curl (for prepare.sh to download the Kenya PBF) and ca-certificates (so curl
-# can verify the HTTPS connection to Geofabrik) are not present in the base
-# image.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# curl (for prepare.sh to download the prebuilt graph tarball) and
+# ca-certificates (so curl can verify HTTPS to the GitHub release / Geofabrik)
+# are not present in the base image.
+#
+# The image is Debian Bullseye, which reached EOL: deb.debian.org no longer
+# serves bullseye (-security) packages and now returns 404s, so apt is repointed
+# at archive.debian.org. Archived releases keep their Release valid-until in the
+# past, hence Acquire::Check-Valid-Until=false.
+RUN set -eux; \
+    rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
+    echo "deb http://archive.debian.org/debian bullseye main" > /etc/apt/sources.list; \
+    echo "deb http://archive.debian.org/debian-security bullseye-security main" >> /etc/apt/sources.list; \
+    apt-get -o Acquire::Check-Valid-Until=false update; \
+    apt-get -o Acquire::Check-Valid-Until=false install -y --no-install-recommends curl ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /data
 
