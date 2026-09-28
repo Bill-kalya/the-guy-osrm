@@ -42,7 +42,13 @@ echo "STEP 3/3: OSRM CUSTOMIZE"
 osrm-customize "${OSRM_FILE}"
 
 echo "Packing graph tarball ..."
-tar czf "${DATA_DIR}/kenya-osrm-graph.tar.gz" "${OSRM_FILE}".*
+# Package from inside ${DATA_DIR} so entries are flat (kenya.osrm.* at the
+# archive root, no data/ prefix) and always include the extensionless base file
+# that osrm-extract produces — a bare "${OSRM_FILE}".* glob silently skips it.
+(
+    cd "${DATA_DIR}"
+    tar czf kenya-osrm-graph.tar.gz "${OSRM_FILE##*/}" "${OSRM_FILE##*/}".*
+)
 
 echo "Removing intermediate PBF ..."
 rm -f "${PBF_FILE}"

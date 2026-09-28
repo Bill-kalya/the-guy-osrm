@@ -53,14 +53,31 @@ echo "[prepare] Downloading prebuilt Kenya OSRM graph from ${GRAPH_URL} ..."
 curl -fL --retry 3 --retry-delay 3 -o "${GRAPH_TARBALL}" "${GRAPH_URL}"
 
 echo "[prepare] Unpacking graph tarball ..."
-tar xzf "${GRAPH_TARBALL}" -C "${DATA_DIR}"
+# Tolerate archives wrapped in a single top-level directory (e.g. one created
+# from a Docker volume as `tar czf graph.tar.gz data/...`). Detect a shared
+# top-level component and strip it so the kenya.osrm.* files land directly in
+# ${DATA_DIR}; already-flat archives are unpacked unchanged.
+FIRST_ENTRY=$(tar tzf "${GRAPH_TARBALL}" 2>/dev/null | head -n1)
+case "${FIRST_ENTRY}" in
+    */*) STRIP_COMPONENTS="--strip-components=1" ;;
+    *)   STRIP_COMPONENTS="" ;;
+esac
+
+tar xzf ${STRIP_COMPONENTS} "${GRAPH_TARBALL}" -C "${DATA_DIR}"
 rm -f "${GRAPH_TARBALL}"
 
-# Reject a bad download (e.g. HTML error page saved as the tarball) before we
-# tell the server it's ready.
-if [ ! -f "${OSRM_FILE}.properties" ]; then
-    echo "[prepare] FATAL: tarball did not contain a valid OSRM graph (no kenya.osrm.properties)."
-    exit 1
-fi
+# Reject a bad download (e.g. an HTML error page saved as the tarball, or a
+# truncated archive) before advertising readiness. These are the files
+# osrm-routed --algorithm mld opens at startup (storage/io_config.hpp).
+for REQUIRED_FILE in \
+        "${OSRM_FILE}.properties" \
+        "${OSRM_FILE}.mldgr" \
+        "${OSRM_FILE}.partition" \
+        "${OSRM_FILE}.cells"; do
+    if [ ! -f "${REQUIRED_FILE}" ]; then
+        echo "[prepare] FATAL: tarball did not contain a valid OSRM MLD graph (missing ${REQUIRED_FILE})."
+        exit 1
+    fi
+done
 
 echo "[prepare] Kenya routing graph ready."
